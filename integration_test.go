@@ -123,7 +123,7 @@ func TestIntegration_ReverseGeocode(t *testing.T) {
 	}
 }
 
-func TestIntegration_ReverseGeocodeBatch(t *testing.T) {
+func TestIntegration_GeocodeBatch(t *testing.T) {
 	// ask for all supported even though some won't exist for the coordinate
 	features := Types{
 		TypeCountry,
@@ -147,17 +147,28 @@ func TestIntegration_ReverseGeocodeBatch(t *testing.T) {
 	}
 
 	var keys []string // for maintaining order for response
-	var requests ReverseGeocodeBatchRequest
+	var revs []ReverseGeocodeRequest
 	for key, loc := range testLocations {
 		keys = append(keys, key)
-		requests = append(requests, ReverseGeocodeRequest{
+		revs = append(revs, ReverseGeocodeRequest{
 			Coordinate: Coordinate{Lat: loc.Lat, Lng: loc.Lng},
 			Language:   "en",
 			Types:      features,
 		})
 	}
 
-	resps, err := client.ReverseGeocodeBatch(context.Background(), requests)
+	var fwds []ForwardGeocodeRequest
+	for key, loc := range testLocations {
+		keys = append(keys, key)
+		fwds = append(fwds, ForwardGeocodeRequest{
+			SearchText: loc.Query,
+			Language:   "en",
+			Types:      features,
+		})
+	}
+
+	req := &GeocodeBatchRequest{Reverse: revs, Forward: fwds}
+	resps, err := client.ReverseGeocodeBatch(context.Background(), req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -166,9 +177,9 @@ func TestIntegration_ReverseGeocodeBatch(t *testing.T) {
 		t.Fatalf("expected batch response length %v to be %v", len(resps.Batch), len(keys))
 	}
 
-	// just check the obvious ones
-	for i, key := range keys {
-		expected := testLocations[key]
+	// check reverse reqs
+	for i := range revs {
+		expected := testLocations[keys[i]]
 		compared := make(map[Type]struct{})
 		resp := resps.Batch[i]
 		for _, feature := range resp.Features {
@@ -177,22 +188,65 @@ func TestIntegration_ReverseGeocodeBatch(t *testing.T) {
 			case TypeCountry:
 				compared[TypeCountry] = struct{}{}
 				if feature.Properties.Name != expected.Country {
-					t.Errorf("expected %v country %v to be %v", key, feature.Properties.Name, expected.Country)
+					t.Errorf("expected reverse %v country %v to be %v", keys[i], feature.Properties.Name, expected.Country)
 				}
 			case TypePlace:
 				compared[TypePlace] = struct{}{}
 				if feature.Properties.Name != expected.Place {
-					t.Errorf("expected %v place %v to be %v", key, feature.Properties.Name, expected.Country)
+					t.Errorf("expected %v place %v to be %v", keys[i], feature.Properties.Name, expected.Country)
 				}
 			}
 		}
 
 		if _, seen := compared[TypeCountry]; !seen {
-			t.Errorf("response for %v did not include a country feature", key)
+			t.Errorf("response for %v did not include a country feature", keys[i])
 		}
 
 		if _, seen := compared[TypePlace]; !seen {
-			t.Errorf("response for %v did not include a place feature", key)
+			t.Errorf("response for %v did not include a place feature", keys[i])
+		}
+	}
+
+	// check forward reqs
+	for i := range fwds {
+		shifted := i + len(revs)
+		expected := testLocations[keys[shifted]]
+		resp := resps.Batch[shifted]
+
+		// Check if response includes a nearby place
+		compared := make(map[Type]struct{})
+		for _, feature := range resp.Features {
+			if feature.Properties.FeatureType != TypePlace {
+				continue
+			}
+
+			// skip if already validated
+			if _, seen := compared[TypePlace]; seen {
+				continue
+			}
+
+			// not the match we're looking for: incorrect country
+			if !strings.Contains(feature.Properties.FullAddress, expected.Country) {
+				continue
+			}
+
+			// not the match we're looking for: latitude out of bounds
+			if math.Abs(feature.Properties.Coordinates.Latitude-expected.Lat) > 0.5 {
+				continue
+			}
+
+			// not the match we're looking for: longitude out of bounds
+			if math.Abs(feature.Properties.Coordinates.Longitude-expected.Lng) > 0.5 {
+				continue
+			}
+
+			// match found!
+			compared[TypePlace] = struct{}{}
+		}
+
+		if _, seen := compared[TypePlace]; !seen {
+			t.Errorf("response for %v did not include a place with country %v and near coordinates [%v, %v]",
+				keys[i], expected.Country, expected.Lat, expected.Lng)
 		}
 	}
 }

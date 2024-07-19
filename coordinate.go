@@ -1,6 +1,7 @@
 package mapbox
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -10,7 +11,12 @@ type Coordinate struct {
 	Lng float64 `json:"longitude"`
 }
 
-func (c Coordinate) IsZero() bool {
+func (c Coordinate) MarshalJSON() ([]byte, error) {
+	s := fmt.Sprintf("[%v, %v]", c.Lng, c.Lat)
+	return json.Marshal(s)
+}
+
+func (c *Coordinate) IsZero() bool {
 	return c.Lat == 0 && c.Lng == 0
 }
 

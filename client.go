@@ -107,7 +107,7 @@ func (c *Client) ReverseGeocode(ctx context.Context, req *ReverseGeocodeRequest)
 	return reverseGeocode(ctx, c, req)
 }
 
-func (c *Client) ReverseGeocodeBatch(ctx context.Context, req ReverseGeocodeBatchRequest) (*GeocodeBatchResponse, error) {
+func (c *Client) ReverseGeocodeBatch(ctx context.Context, req *GeocodeBatchRequest) (*GeocodeBatchResponse, error) {
 	if err := c.checkRateLimit(GeocodingRateLimit); err != nil {
 		return nil, err
 	}
@@ -185,6 +185,8 @@ func (c *Client) handleResponse(apiResponse *http.Response, response interface{}
 	if err != nil {
 		return fmt.Errorf("failed to read body. %w", err)
 	}
+
+	fmt.Println(string(body))
 
 	// check for errors from Mapbox API (non 200 response)
 	if apiResponse.StatusCode >= 400 && apiResponse.StatusCode <= 599 {

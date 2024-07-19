@@ -27,23 +27,28 @@ type ReverseGeocodeRequest struct {
 	Types    Types  `json:"types,omitempty"`
 }
 
-type ReverseGeocodeBatchRequest []ReverseGeocodeRequest
-
 type ForwardGeocodeRequest struct {
-	SearchText   string
-	Autocomplete bool
-	BBox         BoundingBox
-	Country      string
-	Language     string
-	Limit        int
-	Proximity    Coordinate
-	Types        Types
+	SearchText string `json:"q"`
+
+	// optional
+	Autocomplete bool        `json:"autocomplete,omitempty"`
+	BBox         BoundingBox `json:"bbox,omitempty"`
+	Country      string      `json:"country,omitempty"`
+	Language     string      `json:"language,omitempty"`
+	Limit        int         `json:"limit,omitempty"`
+	Proximity    Coordinate  `json:"proximity,omitempty"`
+	Types        Types       `json:"types,omitempty"`
 }
 
 type GeocodeResponse struct {
 	Type        string     `json:"type"`
 	Features    []*Feature `json:"features"`
 	Attribution string     `json:"attribution"`
+}
+
+type GeocodeBatchRequest struct {
+	Reverse []ReverseGeocodeRequest
+	Forward []ForwardGeocodeRequest
 }
 
 type GeocodeBatchResponse struct {
@@ -167,11 +172,20 @@ func reverseGeocode(ctx context.Context, client *Client, req *ReverseGeocodeRequ
 }
 
 // https://docs.mapbox.com/api/search/geocoding/#batch-geocoding, but only supports reverse
-func reverseGeocodeBatch(ctx context.Context, client *Client, req ReverseGeocodeBatchRequest) (*GeocodeBatchResponse, error) {
+func reverseGeocodeBatch(ctx context.Context, client *Client, req *GeocodeBatchRequest) (*GeocodeBatchResponse, error) {
 	query := url.Values{}
 	query.Set("access_token", client.apiKey)
 
-	b, err := json.Marshal(req)
+	var reqs []interface{}
+	for _, rev := range req.Reverse {
+		reqs = append(reqs, rev)
+	}
+
+	for _, fwd := range req.Forward {
+		reqs = append(reqs, fwd)
+	}
+
+	b, err := json.Marshal(reqs)
 	if err != nil {
 		return nil, err
 	}
